@@ -1,0 +1,145 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres
+    environment:
+      POSTGRES_USER: amigoscode
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata  # Use standard PGDATA path
+    volumes:
+      - postgres:/var/lib/postgresql/data  # Mount postgres volume
+      - ./entrypoint/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql  # Mount the initialization script
+    ports:
+      - "5433:5432"
+    networks:
+      eureka_net:
+        aliases:
+          - postgres
+    restart: unless-stopped
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - eureka_net  # Change network to match eureka-server
+    restart: unless-stopped
+
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - eureka_net  # Change network to match eureka-server
+
+  rabbitmq:
+    image: rabbitmq:3.9.11-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - eureka_net  # Change network to match eureka-server
+
+  cassandra:
+    image: cassandra:latest
+    container_name: cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: "Test Cluster"
+      CASSANDRA_SEEDS: "cassandra"
+      CASSANDRA_AUTHENTICATOR: PasswordAuthenticator
+      CASSANDRA_ROLE_MANAGER: CassandraRoleManager
+      CASSANDRA_USER: "cassandra"
+      CASSANDRA_PASSWORD: "123456"
+    ports:
+      - "9042:9042"
+    networks:
+      - eureka_net  # Change network to match eureka-server
+    restart: unless-stopped
+
+  eureka-server:
+    image: eureka-server
+    container_name: eureka-server-container
+    networks:
+      - eureka_net
+    ports:
+      - "8761:8761"
+    expose:
+      - 8761
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8761/" ]
+      interval: 30s
+      retries: 3
+
+  # auth:
+  #   image: auth
+  #   container_name: auth-container
+  #   networks:
+  #     eureka_net:
+  #       aliases:
+  #         - auth-container
+  #   ports:
+  #     - "8090:8090"
+  #   expose:
+  #     - 8090
+  #   depends_on:
+  #     - eureka-server
+
+  apigw:
+    image: apigw
+    container_name: apigw-container
+    networks:
+      - eureka_net  # Change network to match eureka-server
+    ports:
+      - "8083:8083"
+    expose:
+      - 8083
+    depends_on:
+      - eureka-server
+
+  # attachment:
+  #   image: attachment
+  #   container_name: attachment-container
+  #   networks:
+  #     - eureka_net  # Change network to match eureka-server
+  #   ports:
+  #     - "8084:8084"
+  #   expose:
+  #     - 8083
+  #   depends_on:
+  #     - eureka-server
+
+  # bunny-api:
+  #   image: bunny-api
+  #   container_name: bunny-api
+  #   networks:
+  #     - eureka_net  # Change network to match eureka-server
+  #   ports:
+  #     - "8085:8085"
+  #   expose:
+  #     - 8085
+  #   depends_on:
+  #     - eureka-server
+
+networks:
+  eureka_net:  # Make sure all services are on the same network
+    driver: bridge
+
+volumes:
+  postgres:
+  pgadmin:
+
+#  docker network ls
+#  docker network rm eureka_net
+#  docker network inspect eureka_net
+#  docker network connect eureka_net postgres
+#  docker network connect eureka_net auth-container
+#  docker-compose down --volumes --remove-orphans
